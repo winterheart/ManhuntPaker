@@ -16,3 +16,9 @@ target_link_options(manhuntpaker PRIVATE
   $<$<PLATFORM_ID:Windows>:-static>
   $<$<PLATFORM_ID:Windows>:-s>
 )
+
+install(TARGETS manhuntpaker DESTINATION .)
+install(FILES LICENSE README.md DESTINATION .)
+
+set(CPACK_GENERATOR "ZIP")
+include(CPack)
