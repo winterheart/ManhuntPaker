@@ -5,13 +5,13 @@
 #include <format>
 #include <fstream>
 #include <iostream>
-#include "manhuntpaker_version.h"
 #include <memory>
 #include <vector>
 
 #include "CLI11.hpp"
 #include "binio.h"
 #include "crc32.h"
+#include "manhuntpaker_version.h"
 
 #define XOR_KEY 0x7f
 
@@ -91,7 +91,7 @@ void pack(const std::filesystem::path &input, const std::filesystem::path &outpu
   // we'll file table later, after calculating offsets
 
   // header size (12) + entry size (276)
-  int32_t offset = 12 + 276 * header.count;
+  uint32_t offset = 12 + 276 * header.count;
   pak_stream.seekg(offset, std::ios::beg);
 
   for (auto &entry : files) {
