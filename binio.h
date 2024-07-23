@@ -25,6 +25,10 @@ struct pak_entry {
   uint32_t crc;
 };
 
+std::strong_ordering operator<=>(const pak_entry &lhs, const pak_entry &rhs) noexcept {
+  return (lhs.pathname <=> rhs.pathname);
+};
+
 std::ostream &operator<<(std::ostream &out, pak_header &header) {
   out.write(header.MAGIC, 4);
   UTILS::bin_write(out, header.version);
@@ -60,8 +64,7 @@ std::ostream &operator<<(std::ostream &out, const pak_entry &entry) {
 }
 
 std::istream &operator>>(std::istream &in, pak_entry &entry) {
-
-  char path[260];
+  char path[MAX_PATH];
 
   in.read(path, MAX_PATH);
   entry.pathname = std::filesystem::path(path);

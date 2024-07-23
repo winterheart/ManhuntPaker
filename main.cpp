@@ -15,7 +15,7 @@
 
 #define XOR_KEY 0x7f
 
-void extract(const std::filesystem::path &input, const std::filesystem::path &output) {
+void extract(const std::filesystem::path &input, const std::filesystem::path &output, bool verbose) {
 
   std::fstream pak_stream(input, std::ios::binary | std::ios::in);
 
@@ -27,11 +27,14 @@ void extract(const std::filesystem::path &input, const std::filesystem::path &ou
   std::error_code ec;
   std::filesystem::create_directories(output, ec);
 
-  std::cout << std::format("Unpacking {} to {}... ", input.string(), output.string()) << std::endl;
+  std::cout << std::format("Unpacking {} to {}...\n", input.string(), output.string()) << std::endl;
 
   pak_header header;
   pak_stream >> header;
 
+  if (verbose) {
+    std::cout << "  Size   Offset   Flg Checksum Name" << std::endl;
+  }
   for (int32_t i = 0; i < header.count; i++) {
     pak_entry entry;
     pak_stream >> entry;
@@ -52,13 +55,17 @@ void extract(const std::filesystem::path &input, const std::filesystem::path &ou
     out.close();
     pak_stream.seekg(tell, std::ios::beg);
 
-    std::cout << "  unpacked " << entry.pathname.generic_string() << std::endl;
+    if (verbose) {
+      std::cout << std::format("  {0:06d} {1:08d} 0x{2:x} {3:08x} {4}",
+                               entry.size, entry.offset, entry.flag, entry.crc, entry.pathname.string())
+                << std::endl;
+    }
   }
   pak_stream.close();
   std::cout << "Done!" << std::endl;
 }
 
-void pack(const std::filesystem::path &input, const std::filesystem::path &output) {
+void pack(const std::filesystem::path &input, const std::filesystem::path &output, bool verbose) {
   std::vector<pak_entry> files;
 
   // Creating PAK
@@ -94,6 +101,11 @@ void pack(const std::filesystem::path &input, const std::filesystem::path &outpu
   uint32_t offset = 12 + 276 * header.count;
   pak_stream.seekg(offset, std::ios::beg);
 
+  std::sort(files.begin(), files.end());
+
+  if (verbose) {
+    std::cout << "  Size   Offset   Flg Checksum Name" << std::endl;
+  }
   for (auto &entry : files) {
     entry.offset = offset;
 
@@ -113,8 +125,12 @@ void pack(const std::filesystem::path &input, const std::filesystem::path &outpu
     }
 
     pak_stream.write((char *)file_content->data(), entry.size);
-    std::cout << "  adding " << entry.pathname.generic_string() << std::endl;
-    offset += entry.size;
+    if (verbose) {
+      std::cout << std::format("  {0:06d} {1:08d} 0x{2:x} {3:08x} {4}",
+                               entry.size, entry.offset, entry.flag, entry.crc, entry.pathname.string())
+                << std::endl;
+      offset += entry.size;
+    }
   }
 
   // Fill file table
@@ -133,6 +149,8 @@ int main(int argc, char *argv[]) {
   std::filesystem::path in_file;
   std::filesystem::path out_file;
 
+  bool verbose = false;
+
   CLI::App app{"ManhuntPaker - pack/extract PAK files from Rockstar's Manhunt PC game"};
   app.set_version_flag("-v", MANHUNTPAKER_VERSION);
   argv = app.ensure_utf8(argv);
@@ -141,13 +159,15 @@ int main(int argc, char *argv[]) {
                            app.version())
             << std::endl;
 
+  app.add_flag("-V,--verbose", verbose, "Verbose mode");
+
   auto extract_cmd =
-      app.add_subcommand("extract", "Extract PAK file into directory")->callback([&]() { extract(in_file, out_file); });
+      app.add_subcommand("extract", "Extract PAK file into directory")->callback([&]() { extract(in_file, out_file, verbose); });
   extract_cmd->add_option("input", in_file, "Input PAK file")->required()->check(CLI::ExistingFile);
   extract_cmd->add_option("output", out_file, "Output directory");
 
   auto decode_cmd =
-      app.add_subcommand("pack", "Pack directory into PAK file")->callback([&]() { pack(in_file, out_file); });
+      app.add_subcommand("pack", "Pack directory into PAK file")->callback([&]() { pack(in_file, out_file, verbose); });
   decode_cmd->add_option("input", in_file, "Input directory")->required()->check(CLI::ExistingDirectory);
   decode_cmd->add_option("output", out_file, "Output PAK file");
 
