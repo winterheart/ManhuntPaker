@@ -13,7 +13,8 @@
 #include "crc32.h"
 #include "manhuntpaker_version.h"
 
-#define XOR_KEY 0x7f
+const uint8_t XOR_KEY = 0x7f;
+const std::string index_filename = "_index.txt";
 
 void extract(const std::filesystem::path &input, const std::filesystem::path &output, bool verbose) {
 
@@ -26,6 +27,12 @@ void extract(const std::filesystem::path &input, const std::filesystem::path &ou
 
   std::error_code ec;
   std::filesystem::create_directories(output, ec);
+
+  std::fstream index_stream(output / index_filename, std::ios::out);
+  if (!index_stream.is_open()) {
+    std::cout << std::format("Can't open index file {} for writing!", index_filename) << std::endl;
+    exit(1);
+  }
 
   std::cout << std::format("Unpacking {} to {}...\n", input.string(), output.string()) << std::endl;
 
@@ -53,6 +60,7 @@ void extract(const std::filesystem::path &input, const std::filesystem::path &ou
     }
     out.write((char *)(file_content->data()), entry.size);
     out.close();
+    index_stream << entry.pathname.string() << std::endl;
     pak_stream.seekg(tell, std::ios::beg);
 
     if (verbose) {
@@ -61,12 +69,19 @@ void extract(const std::filesystem::path &input, const std::filesystem::path &ou
                 << std::endl;
     }
   }
+  index_stream.close();
   pak_stream.close();
   std::cout << "Done!" << std::endl;
 }
 
 void pack(const std::filesystem::path &input, const std::filesystem::path &output, bool verbose) {
   std::vector<pak_entry> files;
+
+  std::fstream index_stream(input / index_filename, std::ios::in);
+  if (!index_stream.is_open()) {
+    std::cout << std::format("Can't open index file {} for reading!", index_filename) << std::endl;
+    exit(1);
+  }
 
   // Creating PAK
   std::fstream pak_stream(output, std::ios::binary | std::ios::out);
@@ -76,20 +91,21 @@ void pack(const std::filesystem::path &input, const std::filesystem::path &outpu
     exit(1);
   }
 
-  std::cout << std::format("Packing {} to {}... ", input.string(), output.string()) << std::endl;
-
-  for (const auto &dir_entry : std::filesystem::recursive_directory_iterator(input)) {
-    if (std::filesystem::is_regular_file(dir_entry)) {
-      std::filesystem::path file_path = std::filesystem::proximate(dir_entry, input);
-      pak_entry entry{};
-      // Manhunt expects dot on beginning
-      entry.pathname = std::filesystem::path(".") / file_path;
-      entry.size = UTILS::convert_le((int32_t)std::filesystem::file_size(dir_entry));
-      entry.flag = UTILS::convert_le(1);
-
-      files.push_back(entry);
+  std::string line;
+  while (std::getline(index_stream, line)) {
+    std::filesystem::path filename = input / line;
+    if (!std::filesystem::is_regular_file(filename)) {
+      std::cout << std::format("File {} from index does not exist! Failing now...", line) << std::endl;
+      exit(1);
     }
+    pak_entry entry{};
+    entry.pathname = std::filesystem::path(line);
+    entry.size = UTILS::convert_le((int32_t)std::filesystem::file_size(filename));
+    entry.flag = UTILS::convert_le(1);
+    files.push_back(entry);
   }
+
+  std::cout << std::format("Packing {} to {}... ", input.string(), output.string()) << std::endl;
 
   pak_header header;
   header.count = (int32_t)files.size();
@@ -100,8 +116,6 @@ void pack(const std::filesystem::path &input, const std::filesystem::path &outpu
   // header size (12) + entry size (276)
   uint32_t offset = 12 + 276 * header.count;
   pak_stream.seekg(offset, std::ios::beg);
-
-  std::sort(files.begin(), files.end());
 
   if (verbose) {
     std::cout << "  Size   Offset   Flg Checksum Name" << std::endl;
@@ -129,8 +143,8 @@ void pack(const std::filesystem::path &input, const std::filesystem::path &outpu
       std::cout << std::format("  {0:06d} {1:08d} 0x{2:x} {3:08x} {4}",
                                entry.size, entry.offset, entry.flag, entry.crc, entry.pathname.string())
                 << std::endl;
-      offset += entry.size;
     }
+    offset += entry.size;
   }
 
   // Fill file table
